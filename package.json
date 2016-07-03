@@ -1,0 +1,41 @@
+{
+  "name": "base-rpc",
+  "main": "src/rpc.js",
+  "devDependencies": {
+    "boundary-stream": "^1.0.0",
+    "mocha": "^2.5.3",
+    "ws": "^1.1.1"
+  },
+  "scripts": {
+    "test": "mocha -t 60000 test/**.spec.js"
+  },
+  "dependencies": {},
+  "version": "1.0.0",
+  "description": "Basic RPC server/client realisation",
+  "directories": {
+    "example": "example",
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rumkin/basic-rpc.git"
+  },
+  "keywords": [
+    "rpc",
+    "api",
+    "apis",
+    "remote-api",
+    "remote",
+    "exec",
+    "remote",
+    "call",
+    "distrbuted",
+    "network-api"
+  ],
+  "author": "rumkin",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/rumkin/basic-rpc/issues"
+  },
+  "homepage": "https://github.com/rumkin/basic-rpc#readme"
+}

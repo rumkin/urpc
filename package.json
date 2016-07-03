@@ -1,5 +1,5 @@
 {
-  "name": "base-rpc",
+  "name": "urpc",
   "main": "src/rpc.js",
   "devDependencies": {
     "boundary-stream": "^1.0.0",
@@ -11,7 +11,7 @@
   },
   "dependencies": {},
   "version": "1.0.0",
-  "description": "Basic RPC server/client realisation",
+  "description": "Universal RPC server/client realisation with streaming support",
   "directories": {
     "example": "example",
     "test": "test"

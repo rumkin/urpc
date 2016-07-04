@@ -3,14 +3,17 @@
   "main": "src/rpc.js",
   "devDependencies": {
     "boundary-stream": "^1.0.0",
+    "cbor-sync": "^1.0.2",
     "mocha": "^2.5.3",
     "ws": "^1.1.1"
   },
   "scripts": {
-    "test": "mocha -t 60000 test/**.spec.js"
+    "test": "mocha -t ${TIMEOUT:=10000} test/**.spec.js"
   },
-  "dependencies": {},
-  "version": "1.0.0",
+  "dependencies": {
+    "node-uuid": "^1.4.7"
+  },
+  "version": "1.2.0",
   "description": "Universal RPC server/client realisation with streaming support",
   "directories": {
     "example": "example",

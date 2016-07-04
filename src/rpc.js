@@ -2,6 +2,7 @@
 
 const stream = require('stream');
 const EventEmitter = require('events').EventEmitter;
+const uuid = require('node-uuid');
 
 class RpcError extends Error {
     constructor(code, message) {
@@ -23,6 +24,8 @@ class Connection extends EventEmitter{
         this._handshake = false;
         this.data = new Map();
         this._queue = new Map();
+        this._inputStreams = new Map();
+        this._outputStreams = new Map();
         this.debug = false;
 
         this.onMessage = this.onMessage.bind(this);
@@ -76,6 +79,12 @@ class Connection extends EventEmitter{
             this.processMethodMessage(message);
         } else if ('result' in message) {
             this.processResultMessage(message);
+        } else if ('streamId' in message){
+            if ('data' in message) {
+                this.processWriteStreamMessage(message);
+            } else {
+                this.processReadStreamMessage(message);
+            }
         } else {
             this.processUnknownMessage(message);
         }
@@ -132,34 +141,31 @@ class Connection extends EventEmitter{
         var result;
         var method = msg.method;
         var channel = this._channel;
+        var streams = [];
 
         try {
-            result = this._onCall(method, msg.args);
+            var args = [...msg.args];
+
+            if (msg.streams) {
+                msg.streams.forEach((params) => {
+                    var input = new stream.PassThrough();
+                    channel.send({
+                        streamId: params.streamId,
+                    });
+
+                    this._inputStreams.set(params.streamId, input);
+                    streams.push(params.streamId);
+                    args[params.index] = input;
+                });
+            }
+
+            result = this._onCall(method, args);
 
             if (result instanceof Promise === false) {
                 result = Promise.resolve(result);
             }
         } catch (error) {
-            if (error instanceof RpcError) {
-                channel.send({
-                    id: msg.id,
-                    result: null,
-                    error: {
-                        code: error.code,
-                        message: error.message,
-                    }
-                });
-            } else {
-                channel.send({
-                    id: msg.id,
-                    result: null,
-                    error: {
-                        code: error.code || 'E_UNKNOWN',
-                        message: error.message,
-                    }
-                });
-            }
-            return;
+            result = Promise.reject(error);
         }
 
         result.then((callResult) => {
@@ -204,7 +210,9 @@ class Connection extends EventEmitter{
             }
         }, (error) => {
             var message;
-            if (this.debug) {
+            if (error instanceof RpcError) {
+                message = error.message;
+            } else if (this.debug) {
                 message = error.message;
             } else {
                 message = 'Internal error';
@@ -218,7 +226,94 @@ class Connection extends EventEmitter{
                     message,
                 },
             });
+        })
+        .then(() => {
+            streams.forEach(streamId => {
+                this._inputStreams.delete(streamId);
+            });
         });
+    }
+
+    processReadStreamMessage(msg) {
+        var streamId = msg.streamId;
+
+        var stream = this._outputStreams.get(streamId);
+
+        if (! stream) {
+            this._channel.send({
+                streamId,
+                ended: true,
+                data: null,
+                error: {
+                    code: 'stream_not_found',
+                    message: 'Stream not found',
+                },
+            });
+            return;
+        }
+
+        stream.on('data', (chunk) => {
+            this._channel.send({
+                streamId,
+                ended: false,
+                data: chunk,
+                error: null,
+            });
+        });
+
+        stream.on('end', () => {
+            this._channel.send({
+                streamId,
+                ended: true,
+                data: null,
+                error: null,
+            });
+        });
+
+        stream.on('error', (error) => {
+            var message;
+            if (this.debug) {
+                message = error.message;
+            } else {
+                message = 'Internal error';
+            }
+
+            this._channel.send({
+                streamId,
+                ended: true,
+                data: null,
+                error: {
+                    code: 'E_UNKNOWN',
+                    message: 'Internal error',
+                },
+            });
+        });
+    }
+
+    processWriteStreamMessage(msg) {
+        var streamId = msg.streamId;
+
+        if (! this._inputStreams.has(streamId)) {
+            this._channel.send({
+                id: msg.id,
+                result: null,
+                error: {
+                    code: 'stream_not_found',
+                    message: 'Stream id not found',
+                }
+            });
+            return;
+        }
+
+        var stream = this._inputStreams.get(streamId);
+
+        if (msg.ended) {
+            stream.end();
+        } else if (msg.error) {
+            stream.emit('error', new RPCError(msg.error.code, msg.error.message));
+        } else {
+            stream.write(msg.data);
+        }
     }
 
     processResultMessage(msg) {
@@ -239,6 +334,9 @@ class Connection extends EventEmitter{
 
             if (msg.ended) {
                 callback.stream.end();
+                callback.streams.forEach((streamId) => {
+                    this._outputStreams.delete(streamId);
+                })
                 queue.delete(id);
             } else {
                 callback.stream.write(msg.result);
@@ -255,9 +353,7 @@ class Connection extends EventEmitter{
         }
     }
 
-    processUnknownMessage(message) {
-        // TODO Process message...
-    }
+    processUnknownMessage(message) {}
 
     connect(credentials) {
         return this.call(null, credentials).then((result) => {
@@ -269,16 +365,39 @@ class Connection extends EventEmitter{
     call(method, ...args) {
         const id = ++this._id;
 
+
+        var streams = [];
+
+        args.forEach((arg, i) => {
+            if (! isReadableStream(arg)) {
+                return;
+            }
+
+            var streamId = uuid();
+
+
+            args[i] = null;
+            streams.push({
+                index: i,
+                streamId,
+            });
+
+            this._outputStreams.set(streamId, arg);
+        });
+
+
         this._channel.send({
             id,
             method,
             args,
+            streams,
         });
 
         return new Promise((resolve, reject) => {
             this._queue.set(id, {
                 resolve,
                 reject,
+                streams: streams.map(stream => stream.streamId),
             });
         });
     }
@@ -289,7 +408,7 @@ class Connection extends EventEmitter{
 }
 
 class Server extends EventEmitter{
-    constructor({onCall, onHandshake, connection, connectEvent} = {}) {
+    constructor({onCall, onHandshake, connection, connectEvent, debug} = {}) {
         super();
 
         if (onCall) {
@@ -303,7 +422,7 @@ class Server extends EventEmitter{
         this.onConnect = this.onConnect.bind(this);
         this.unbind = this.unbind.bind(this);
 
-        this.connectEvent = connectEvent || 'connect';
+        this.connectEvent = connectEvent || 'connection';
 
         if (connection) {
             this._connection = connection;
@@ -311,6 +430,7 @@ class Server extends EventEmitter{
         }
 
         this._clients = [];
+        this.debug = !! debug;
     }
 
     onConnect(conn) {
@@ -336,6 +456,7 @@ class Server extends EventEmitter{
     client(channel) {
         var connection = new Connection(channel);
         connection.onCall(this._onCall);
+        connection.setDebug(this.debug);
 
         if (this._onHandshake) {
             connection.onHandshake(this._onHandshake);
@@ -373,16 +494,22 @@ class Server extends EventEmitter{
  * like transform stream but for message channels.
  */
 class Tunnel extends EventEmitter {
-    constructor({channel, onMessage, onSend} = {}) {
+    constructor({channel, onMessage, onSend, send, receive} = {}) {
         super();
 
         this.channel = channel;
         this.onMessage = onMessage || this.onMessage;
         this.onSend = onSend || this.onSend;
 
-        channel.on('message', (message) => {
-            this.emit('message', this.onMessage(message));
-        });
+        if (send) {
+            this.send = send;
+        }
+
+        if (receive) {
+            this.receive = receive;
+        }
+
+        channel.on('message', (message) => this.receive(message));
 
         channel.on('close', this.emit.bind(this, 'close'));
         channel.on('error', this.emit.bind(this, 'error'));
@@ -390,6 +517,10 @@ class Tunnel extends EventEmitter {
 
     send(message) {
         this.channel.send(this.onSend(message));
+    }
+
+    receive(message) {
+        this.emit('message', this.onMessage(message));
     }
 
     onMessage(message) {

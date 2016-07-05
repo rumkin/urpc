@@ -1,5 +1,6 @@
 {
   "name": "urpc",
+  "version": "1.2.2",
   "main": "src/rpc.js",
   "devDependencies": {
     "boundary-stream": "^1.0.0",
@@ -13,7 +14,6 @@
   "dependencies": {
     "node-uuid": "^1.4.7"
   },
-  "version": "1.2.1",
   "description": "Universal RPC server/client realisation with streaming support",
   "directories": {
     "example": "example",

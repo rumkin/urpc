@@ -218,6 +218,8 @@ class Connection extends EventEmitter{
                 message = 'Internal error';
             }
 
+            this.emit('call:error', error);
+
             channel.send({
                 id: msg.id,
                 result: null,

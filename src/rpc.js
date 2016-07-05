@@ -109,10 +109,10 @@ class Connection extends EventEmitter{
                 error: null,
             });
 
-            if (result) {
+            if (result === true) {
                 this._handshake = true;
             } else {
-                this.close();
+                setImmediate(() => this.close());
             }
 
         }, (error) => {

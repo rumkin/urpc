@@ -2,7 +2,7 @@
 
 const stream = require('stream');
 const EventEmitter = require('events').EventEmitter;
-const uuid = require('node-uuid');
+const uuid = require('uuid');
 
 class RpcError extends Error {
     constructor(code, message) {

@@ -8,14 +8,23 @@ class RpcError extends Error {
     constructor(code, message) {
         super(message);
 
-        this.name = 'RpcError';
+        this.name = this.constructor.name;
         this.code = code;
+    }
 
-        Error.captureStackTrace(this, this.constructor);
+    valueOf() {
+        return {
+            code: this.code,
+            message: this.message,
+        };
+    }
+
+    toJSON() {
+        return this.valueOf();
     }
 }
 
-class Connection extends EventEmitter{
+class Connection extends EventEmitter {
     constructor(channel) {
         super();
 
@@ -65,18 +74,27 @@ class Connection extends EventEmitter{
 
     unbind() {
         this._channel.removeListener('message', this.onMessage);
-        this._channel.removeListener('close', this.bind);
+        this._channel.removeListener('close', this.unbind);
 
-        Array.from(this._queue.values()).forEach(callback => callback.reject(
+        Array.from(this._queue.values())
+        .forEach(callback => callback.reject(
             new RpcError('connection_closed', 'Connection closed')
         ));
     }
 
     onMessage(message) {
         if (! this._handshake && this._onHandshake) {
-            this.processHandshakeMessage(message);
+            this.processHandshakeMessage(message)
+            .catch((error) => {
+                this.emit('error', error);
+                this.close();
+            });
         } else if ('method' in message) {
-            this.processMethodMessage(message);
+            this.processMethodMessage(message)
+            .catch((error) => {
+                this.emit('error', error);
+                this.close();
+            });
         } else if ('result' in message) {
             this.processResultMessage(message);
         } else if ('streamId' in message){
@@ -102,7 +120,7 @@ class Connection extends EventEmitter{
             result = Promise.reject(err);
         }
 
-        result.then((result) => {
+        return result.then((result) => {
             this._channel.send({
                 id,
                 result,
@@ -168,7 +186,7 @@ class Connection extends EventEmitter{
             result = Promise.reject(error);
         }
 
-        result.then((callResult) => {
+        return result.then((callResult) => {
             if (isReadableStream(callResult)) {
                 function onData(chunk) {
                     channel.send({
@@ -194,7 +212,7 @@ class Connection extends EventEmitter{
                 callResult.once('error', (error) => {
                     channel.send({
                         id: msg.id,
-                        ednded: true,
+                        ended: true,
                         error,
                     });
 
@@ -238,7 +256,6 @@ class Connection extends EventEmitter{
 
     processReadStreamMessage(msg) {
         var streamId = msg.streamId;
-
         var stream = this._outputStreams.get(streamId);
 
         if (! stream) {
@@ -286,7 +303,7 @@ class Connection extends EventEmitter{
                 data: null,
                 error: {
                     code: 'E_UNKNOWN',
-                    message: 'Internal error',
+                    message: message,
                 },
             });
         });
@@ -302,7 +319,7 @@ class Connection extends EventEmitter{
                 error: {
                     code: 'stream_not_found',
                     message: 'Stream id not found',
-                }
+                },
             });
             return;
         }
@@ -319,14 +336,14 @@ class Connection extends EventEmitter{
     }
 
     processResultMessage(msg) {
-        var queue = this._queue;
+        let queue = this._queue;
 
         if (! queue.has(msg.id)) {
             return;
         }
 
-        var id = msg.id;
-        var callback = queue.get(id);
+        let id = msg.id;
+        let callback = queue.get(id);
 
         if ('ended' in msg) {
             if (! callback.stream) {
@@ -338,7 +355,7 @@ class Connection extends EventEmitter{
                 callback.stream.end();
                 callback.streams.forEach((streamId) => {
                     this._outputStreams.delete(streamId);
-                })
+                });
                 queue.delete(id);
             } else {
                 callback.stream.write(msg.result);
@@ -358,7 +375,8 @@ class Connection extends EventEmitter{
     processUnknownMessage(message) {}
 
     connect(credentials) {
-        return this.call(null, credentials).then((result) => {
+        return this.call(null, credentials)
+        .then((result) => {
             this._handshake = result;
             return result;
         });
@@ -366,8 +384,6 @@ class Connection extends EventEmitter{
 
     call(method, ...args) {
         const id = ++this._id;
-
-
         var streams = [];
 
         args.forEach((arg, i) => {
@@ -377,7 +393,6 @@ class Connection extends EventEmitter{
 
             var streamId = uuid();
 
-
             args[i] = null;
             streams.push({
                 index: i,
@@ -386,7 +401,6 @@ class Connection extends EventEmitter{
 
             this._outputStreams.set(streamId, arg);
         });
-
 
         this._channel.send({
             id,

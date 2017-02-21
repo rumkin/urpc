@@ -220,10 +220,9 @@ describe('RPC', () => {
 
             const rpc = new WebSocketRPC({
                 connection: wss,
-
                 onCall() {
                     return true;
-                }
+                },
             });
 
             const ws = new WS('ws://0.0.0.0:' + port);
@@ -238,11 +237,12 @@ describe('RPC', () => {
                 client.call('method')
                 .then(() => {
                     reject(new Error('result returned'));
-                })
-                .catch((error) => {
+                }, (error) => {
                     assert.equal(error.code, 'connection_closed', 'Connection closed error');
                     resolve();
                 });
+
+                rpc.on('error', reject);
 
                 rpc.close();
             });

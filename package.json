@@ -9,7 +9,7 @@
     "ws": "^1.1.1"
   },
   "scripts": {
-    "test": "mocha -t ${TIMEOUT:=10000} test/**.spec.js"
+    "test": "mocha -t ${TIMEOUT:=10000} test/**.spec.js -- --trace-warnings"
   },
   "dependencies": {
     "node-uuid": "^1.4.7"

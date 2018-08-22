@@ -1,27 +1,26 @@
 {
   "name": "urpc",
-  "version": "1.3.0",
-  "main": "src/rpc.js",
+  "version": "2.0.0",
+  "main": "urpc.js",
   "devDependencies": {
-    "boundary-stream": "^1.0.0",
-    "cbor-sync": "^1.0.2",
-    "mocha": "^2.5.3",
-    "ws": "^1.1.1"
+    "mocha": "^5.2.0",
+    "should": "^13.2.3",
+    "uglify-es": "^3.3.9"
   },
   "scripts": {
-    "test": "mocha -t ${TIMEOUT:=10000} test/**.spec.js -- --trace-warnings"
+    "clean": "rm -f urpc.min.js",
+    "minify": "uglifyjs urpc.js > urpc.min.js",
+    "build": "npm run clean && npm run minify",
+    "test": "mocha test.spec.js"
   },
-  "dependencies": {
-    "uuid": "^3.0.1"
-  },
-  "description": "Universal RPC server/client realisation with streaming support",
+  "description": "MicroRPC protocol as Node Stream",
   "directories": {
     "example": "example",
     "test": "test"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rumkin/basic-rpc.git"
+    "url": "git+https://github.com/rumkin/urpc.git"
   },
   "keywords": [
     "rpc",
@@ -38,7 +37,7 @@
   "author": "rumkin",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/rumkin/basic-rpc/issues"
+    "url": "https://github.com/rumkin/urpc/issues"
   },
-  "homepage": "https://github.com/rumkin/basic-rpc#readme"
+  "homepage": "https://github.com/rumkin/urpc#readme"
 }

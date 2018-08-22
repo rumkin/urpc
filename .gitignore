@@ -1,5 +1,12 @@
+node_modules/
+npm-debug.log
+coverage/
+*.pid
+
 **/.DS_Store
-tmp
-local
-node_modules
-coverage
+
+tmp/
+local/
+dist/
+
+urpc.min.js

@@ -1,0 +1,7 @@
+.editorconfig
+.eslint
+.eslintignore
+
+dist/
+tmp/
+example/

@@ -1,87 +1,50 @@
-# URPC
+# μRPC
 
-Universal RPC for node.js with streams support. It allow to send and receive
-streams.
+Tiny transport agnostic bidirectional JSONRPC implementation for browser and
+node.js.
 
-## Installation
+### Install
 
 Install via npm:
+
 ```
 npm i urpc
 ```
 
-## API
+### Usage
 
-### Connection
-
-Connection is the transport for connections. It requires message transport like
-WebSocket or process. Connection listens `message` event and reply with
-`send()` method.
+Simple usage example.
 
 ```javascript
+import {RpcStream, RpcError} from 'urpc';
+
+async function handler(rpc, req, res) {
+    if (req.method === 'greet') {
+        res.result = `Hello, ${req.params[0]}!`;
+    }
+    else {
+        res.error = RpcError.methodNotFound(req.method);
+    }
+};
+
 // Create listening (server) connection with custom server
-server.on('connection', (conn) => {
-    var urpc = new URPC.Connection({
-        channel: conn,
-        onCall(method, args) {
-            // ... realize api call mechanism on your own...
-            switch (method) {
-                //  Echo method
-                case 'echo':
-                    return args[0];
-                break;
-                default:
-                    return null;
-            }
-        }
-    });
-});
+wsServer.on('connection', (conn) => {
+    const rpc = new RpcStream(handler);
 
-// Create client
-conn.on('connect', () => {
-    var urpc = new URPC.Connection({
-        channel: conn,
+    conn.on('message', (message) => {
+        rpc.write(JSON.parse(message));
     });
 
-    urpc.call('echo', 'hello')
-    .then(result => assert.equal(result, 'hello', 'Result is "hello"'));
-});
-```
-
-#### Streaming example
-
-URPC supports passing a streams as arguments or response. Example of file transfer:
-
-```javascript
-// Create listening (server) connection with custom server
-server.on('connection', (conn) => {
-    var urpc = new URPC.Connection({
-        channel: conn,
-        onCall(method, args) {
-            return new Promise((resolve, reject) => {
-                var stream = fs.createWriteStream('streamed.js');
-                stream.on('error', reject);
-                stream.on('end', resolve);
-
-                args[0].pipe(stream);
-            });
-        }
-    });
-});
-
-// Create client
-conn.on('connect', () => {
-    var urpc = new URPC.Connection({
-        channel: conn,
+    conn.on('close', () => {
+        rpc.close();
     });
 
-    urpc.call('write_file', fs.createReadStream(__filename))
-    .then(result => {
-        console.log('File is written');
+    rpc.on('data', (msg) => {
+        conn.write(JSON.stringify(msg));
+    });
+
+    rpc.on('close', () => {
+        conn.close();
     });
 });
 ```
-
-## License
-
-Licensed under MIT.

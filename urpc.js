@@ -547,10 +547,10 @@
 
     const uRpc = {};
 
-    uRpc.RpcStream = RpcStream;
+    uRpc.Stream = RpcStream;
     uRpc.Request = Request;
     uRpc.Response = Response;
-    uRpc.RpcError = RpcError;
+    uRpc.Error = RpcError;
 
     // Data errors
     uRpc.PARSE_ERROR = PARSE_ERROR;

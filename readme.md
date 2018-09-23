@@ -16,20 +16,20 @@ npm i urpc
 Simple usage example.
 
 ```javascript
-import {RpcStream, RpcError} from 'urpc';
+import urpc from 'urpc';
 
-async function handler(rpc, req, res) {
+async function handler(req, res) {
     if (req.method === 'greet') {
         res.result = `Hello, ${req.params[0]}!`;
     }
     else {
-        res.error = RpcError.methodNotFound(req.method);
+        res.error = urpc.Error.methodNotFound(req.method);
     }
 };
 
 // Create listening (server) connection with custom server
 wsServer.on('connection', (conn) => {
-    const rpc = new RpcStream(handler);
+    const rpc = new urpc.Stream(handler);
 
     conn.on('message', (message) => {
         rpc.write(JSON.parse(message));

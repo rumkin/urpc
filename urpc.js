@@ -507,7 +507,7 @@
             }
         }
 
-        if (! (isString(error.method) && isNonEmptyString(error.method))) {
+        if (! (isString(message.method) && isNonEmptyString(message.method))) {
             return false;
         }
         else if (! isObject(message.params)) {

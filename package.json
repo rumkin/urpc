@@ -1,6 +1,6 @@
 {
   "name": "urpc",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "main": "urpc.js",
   "devDependencies": {
     "mocha": "^5.2.0",
@@ -13,7 +13,7 @@
     "build": "npm run clean && npm run minify",
     "test": "mocha test.spec.js"
   },
-  "description": "MicroRPC protocol as Node Stream",
+  "description": "μRPC (microRPC) is JSONRPC implementation with Node's Stream interface for Browser and Server",
   "directories": {
     "example": "example",
     "test": "test"

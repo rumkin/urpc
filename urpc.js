@@ -15,7 +15,7 @@
     });
 
     class RpcError extends Error {
-        constructor({code, message, data} = {}) {
+        constructor({code, message, data = {}} = {}) {
             super();
 
             if (typeof message === 'undefined') {
@@ -51,6 +51,18 @@
             });
 
             Error.captureStackTrace(error, this.invalidParams);
+
+            return error;
+        }
+
+        static internalError(originError) {
+            const error = new this({
+                code: INTERNAL_ERROR,
+                message: originError.message,
+                data: {},
+            });
+
+            Error.captureStackTrace(error, this.internalError);
 
             return error;
         }
@@ -131,18 +143,18 @@
     }
 
     class RpcStream extends TypedEmitter {
-        constructor(handle) {
+        constructor(handler) {
             super();
 
             this.id = 0;
             this.queue = [];
-            this.income = 0;
+            this.incomingMessages = 0;
 
             this.isEnding = false;
             this.isEnded = false;
             this.isClosed = false;
 
-            this.handle = handle;
+            this.handler = handler;
             this.listeners = {
                 data: [],
                 end: [],
@@ -152,21 +164,17 @@
         }
 
         _increaseCounter() {
-            this.income += 1;
+            this.incomingMessages += 1;
         }
 
         _decreaseCounter() {
-            this.income -= 1;
+            this.incomingMessages -= 1;
         }
 
         push(data) {
-            if (data.id) {
-                this._decreaseCounter();
-            }
-
             this.emit('data', data);
 
-            if (this.isEnding && this.income === 0) {
+            if (this.isEnding && this.incomingMessages === 0) {
                 this.setEnded();
             }
         }
@@ -242,16 +250,21 @@
             if (message.id) {
                 this._increaseCounter();
                 onResult = () => {
+                    this._decreaseCounter();
                     this.push(res.toJSON());
                 };
             }
 
             const onError = (error) => {
+                if (onResult) {
+                    this._decreaseCounter();
+                }
+
                 this.emit('error', error);
                 this.end();
             };
 
-            this.handle(this, req, res)
+            this.handler.call(this, req, res)
             .then(onResult)
             .catch(onError);
         }
@@ -283,9 +296,7 @@
         }
 
         handleError(message) {
-            const issues = Type.check(message, types.error);
-
-            if (issues.length) {
+            if (! isErrorMessage(message)) {
                 this.emit('error', new RpcError({
                     code: INVALID_REQUEST,
                 }));
@@ -319,7 +330,7 @@
                 reject(closed);
             });
 
-            if (this.income > 0) {
+            if (this.incomingMessages > 0) {
                 return;
             }
 
@@ -368,6 +379,10 @@
             this.isEnded = true;
 
             this.emit('finish');
+        }
+
+        setHandler(handle) {
+            this.handle = handle;
         }
     }
 
@@ -466,6 +481,10 @@
         return isFinite(value) && ! isNaN(value);
     }
 
+    function isFinite(value) {
+        return value !== Infinity && value !== -Infinity;
+    }
+
     function isId(id) {
         if (isNumber(id)) {
             if (! isRealNumber(id)) {
@@ -488,7 +507,7 @@
             }
         }
 
-        if (! isString(message.method)) {
+        if (! (isString(error.method) && isNonEmptyString(error.method))) {
             return false;
         }
         else if (! isObject(message.params)) {
@@ -509,19 +528,16 @@
             return false;
         }
 
-        const {error} = message;
+        const code = message.error.code;
 
-        if (! isString(error.code) || isNonEmptyString(error.code)) {
+        if (! (isNumber(code) && isRealNumber(code)) && ! (isString(code) && isNonEmptyString(code))) {
             return false;
         }
-        else if (! isString(error.message) || isNonEmptyString(error.message)) {
+        else if (! (isString(error.message) && isNonEmptyString(error.message))) {
             return false;
         }
         else if ('data' in error) {
-            if (! isObject(error.data)) {
-                return false;
-            }
-            else if (error.data.constructor !== Object) {
+            if (! isObject(error.data) || error.data.constructor !== Object) {
                 return false;
             }
         }

@@ -152,7 +152,6 @@
 
             this.isEnding = false;
             this.isEnded = false;
-            this.isClosed = false;
 
             this.handler = handler;
             this.listeners = {
@@ -161,6 +160,10 @@
                 error: [],
                 finish: [],
             };
+        }
+
+        get isClosed() {
+            return this.isEnding || this.isEnded;
         }
 
         _increaseCounter() {
@@ -322,7 +325,6 @@
             }
 
             this.isEnding = true;
-            this.isClosed = true;
 
             const closed = new Error('Closed');
 
@@ -528,7 +530,8 @@
             return false;
         }
 
-        const code = message.error.code;
+        const error = message.error;
+        const code = error.code;
 
         if (! (isNumber(code) && isRealNumber(code)) && ! (isString(code) && isNonEmptyString(code))) {
             return false;

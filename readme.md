@@ -19,32 +19,32 @@ Simple usage example.
 import urpc from 'urpc';
 
 async function handler(req, res) {
-    if (req.method === 'greet') {
-        res.result = `Hello, ${req.params[0]}!`;
-    }
-    else {
-        res.error = urpc.Error.methodNotFound(req.method);
-    }
+  if (req.method === 'greet') {
+    res.result = `Hello, ${req.params[0]}!`;
+  }
+  else {
+    res.error = urpc.Error.methodNotFound(req.method);
+  }
 };
 
 // Create listening (server) connection with custom server
 wsServer.on('connection', (conn) => {
-    const rpc = new urpc.Stream(handler);
+  const rpc = new urpc.Stream(handler);
 
-    conn.on('message', (message) => {
-        rpc.write(JSON.parse(message));
-    });
+  conn.on('message', (message) => {
+    rpc.write(JSON.parse(message));
+  });
 
-    conn.on('close', () => {
-        rpc.close();
-    });
+  conn.on('close', () => {
+    rpc.close();
+  });
 
-    rpc.on('data', (msg) => {
-        conn.write(JSON.stringify(msg));
-    });
+  rpc.on('data', (msg) => {
+    conn.write(JSON.stringify(msg));
+  });
 
-    rpc.on('close', () => {
-        conn.close();
-    });
+  rpc.on('close', () => {
+    conn.close();
+  });
 });
 ```

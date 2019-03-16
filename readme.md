@@ -48,3 +48,7 @@ wsServer.on('connection', (conn) => {
   });
 });
 ```
+
+## License
+
+MIT © [Rumkin](https://rumk.in)

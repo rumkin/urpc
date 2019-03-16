@@ -1,6 +1,6 @@
 {
   "name": "urpc",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "main": "urpc.js",
   "devDependencies": {
     "mocha": "^5.2.0",
@@ -11,6 +11,7 @@
     "clean": "rm -f urpc.min.js",
     "minify": "uglifyjs urpc.js > urpc.min.js",
     "build": "npm run clean && npm run minify",
+    "prepublishOnly": "npm run build",
     "test": "mocha test.spec.js"
   },
   "description": "μRPC (microRPC) is JSONRPC implementation with Node's Stream interface for Browser and Server",

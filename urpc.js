@@ -185,6 +185,7 @@
         'error',
         'finish',
         'close',
+        'request',
       ]);
 
       this.id = 0;
@@ -311,10 +312,10 @@
         this.emit('error', error);
         this.end();
       };
-
       this.handler.call(this, req, res)
       .then(onResult)
       .catch(onError);
+      this.emit('request', req, res);
     }
 
     handleResponse(message) {

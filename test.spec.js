@@ -1,11 +1,11 @@
 /* global describe it */
 const should = require('should');
 
-const uRpc = require('./');
+const urpc = require('./');
 
 describe('μRPC', function() {
   it('Should receive request and return result', async function() {
-    const stream = new uRpc.Stream(async (req, res) => {
+    const stream = new urpc.Stream(async (req, res) => {
       res.result = req.params[0];
     });
 

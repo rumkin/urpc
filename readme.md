@@ -40,7 +40,7 @@ wsServer.on('connection', (conn) => {
   });
 
   rpc.on('data', (msg) => {
-    conn.write(JSON.stringify(msg));
+    conn.write(msg);
   });
 
   rpc.on('close', () => {

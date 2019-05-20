@@ -608,7 +608,7 @@
   uRpc.INVALID_PARAMS = INVALID_PARAMS;
   uRpc.INTERNAL_ERROR = INTERNAL_ERROR;
 
-  if (typeof module.exports === 'object') {
+  if (typeof module !== 'undefined' && typeof module.exports === 'object') {
     module.exports = uRpc;
   }
   else if (typeof define === 'function' && define.amd) {

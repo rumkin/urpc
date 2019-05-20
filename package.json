@@ -1,6 +1,6 @@
 {
   "name": "urpc",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "main": "urpc.js",
   "devDependencies": {
     "mocha": "^5.2.0",

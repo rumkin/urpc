@@ -6,67 +6,61 @@ import {
   EClosed,
   protocolErrorFrom,
   EMethodNotFound,
+  EInternalError,
 } from './errors.js'
 import {
   isMessage,
   isErrorMessage,
   isRequestMessage,
 } from './utils.js'
+import {
+  formatError,
+  formatRequest,
+} from './utils.js'
+import {UrpcRequest} from './request.js'
+import {UrpcResponse} from './response.js'
 
-function formatRequest(id, {method, params = []}) {
-  return {
-    jsonrpc: '1.0',
-    id,
-    method,
-    params,
-  };
+// Default codec which only passses messages back and forse.
+const noCodec = {
+  encode: (v) => v,
+  decode: (v) => v,
 }
 
-function formatResponse(id, result = null) {
-  return {
-    jsonrpc: '1.0',
-    id,
-    result,
-  };
+const jsonCodec = {
+  encode: (v) => JSON.stringify(v),
+  decode: (v) => JSON.parse(v),
 }
 
-function formatError(id, {code, message, data}) {
-  return {
-    jsonrpc: '1.0',
-    id,
-    error: {code, message, data},
-  };
-}
+async function asyncNoop() {}
 
-function hasToParse(msg) {
-  return typeof msg === 'string' || msg instanceof Uint8Array;
-}
+/**
+ * @typedef {Object} UrpcCodec
+ * @param {Function} encode Encode value and return string or buffer.
+ * @param {Function} decode Receive a string or buffer and decode it into a message.
+ */
 
-function arrayToString(msg) {
-  const array = [];
-  for (let i = 0; i < msg.length; i++) {
-    array[i] = msg[i];
-  }
-  return array.join('');
-}
+/**
+ * @typedef {Function} UrpcHandler
+ * @param {Object} context Context value.
+ * @param {UrpcConnection} context.stream Current UrpcConnection instance
+ * @param {UrpcRequest} context.req UrpcRequest instance
+ * @param {UrpcResponse} context.res UrpcResponse instance
+ * @returns {Promise<void>} Handler returns nothing, but provides a result by modifying response object.
+ */
 
-function parseMessage(msg) {
-  if (msg instanceof Uint8Array) {
-    if (typeof Buffer === 'function') {
-      return JSON.parse(msg);
-    }
-    else {
-      return JSON.parse(arrayToString(msg));
-    }
-  }
-
-  return JSON.parse(msg);
-}
-
-export class UrpcStream extends TypedEmitter {
+/**
+ * @typedef {Object} UrpcConnectionOptions
+ * @param {UrpcHandler} handler Urpc stream handler function
+ * @param {string|Null|UrpcCodec} [codec="json"] codec instance or codec id.
+ */
+export class UrpcConnection extends TypedEmitter {
+  /**
+   *
+   * @param {UrpcHandler} [handler] Handler function
+   * @param {UrpcConnectionOptions} options  UrpcConnection options object
+   */
   constructor(
-    handler = async () => {},
-    options = {},
+    handler, options = {},
   ) {
     super([
       'data',
@@ -79,56 +73,75 @@ export class UrpcStream extends TypedEmitter {
     ]);
 
     this.id = 0;
-    this.queue = [];
-    this.incomingMessages = 0;
+    this._queue = [];
+    this._messageCounter = 0;
 
-    this.isEnding = false;
-    this.isEnded = false;
+    this._isEnding = false;
+    this._isEnded = false;
 
-    this.handler = handler;
-    options = options;
-    this.hasToParse = options.hasToParse || hasToParse;
-    this.parseMessage = options.parseMessage || parseMessage;
+    const {
+      handler: handlerFn = asyncNoop,
+      codec = 'json',
+    } = Object.assign(
+      {},
+      options,
+      typeof handler === 'function'
+        ? {handler}
+        : handler
+    )
+
+    this._handler = handlerFn;
+    this._codec = getCodec(codec);
   }
 
   get isClosed() {
-    return this.isEnding || this.isEnded;
+    return this._isEnding || this._isEnded;
+  }
+
+  get isEnded() {
+    return this._isEnded;
+  }
+
+  get isEnding() {
+    return this._isEnding;
   }
 
   _increaseCounter() {
-    this.incomingMessages += 1;
+    this._messageCounter += 1;
   }
 
   _decreaseCounter() {
-    this.incomingMessages -= 1;
+    this._messageCounter -= 1;
   }
 
   push(data) {
-    // Node.js Stream interface event
-    this.emit('data', data);
-    // Connection interface event
-    this.emit('message', data);
+    const encoded = this._codec.encode(data);
 
-    if (this.isEnding && this.incomingMessages === 0) {
+    // Node.js Stream interface event
+    this.emit('data', encoded);
+    // Connection interface event
+    this.emit('message', encoded);
+
+    if (this._isEnding && this._messageCounter === 0) {
       this.emit('finish');
       this.setEnded();
     }
   }
 
-  write(message) {
-    if (message === null) {
+  write(rawMessage) {
+    if (rawMessage === null) {
       this.end();
       return;
     }
-    else if (this.hasToParse(message)) {
-      try {
-        message = this.parseMessage(message);
-      }
-      catch (err) {
-        this.push(formatError(undefined, new EParseError()));
-        this.end();
-        return;
-      }
+
+    let message
+    try {
+      message = this._codec.decode(rawMessage);
+    }
+    catch (err) {
+      this.push(formatError(undefined, new EParseError()));
+      this.end();
+      return;
     }
 
     if (isMessage(message) === false) {
@@ -141,20 +154,24 @@ export class UrpcStream extends TypedEmitter {
 
     if ('method' in message) {
       this.handleRequest(message);
+      return
     }
     else if ('result' in message) {
       this.handleResponse(message);
+      return
     }
     else if ('error' in message) {
       this.handleError(message);
+      return
     }
-    else {
-      const error = new EInvalidRequest(message);
 
-      this.push(formatError(message.id, error));
-      this.emit('error', error);
-      this.end();
-    }
+    const error = new EInvalidRequest(message);
+
+    this.push(
+      formatError(message.id, error)
+    );
+    this.emit('error', error);
+    this.end();
   }
 
   handleRequest(message) {
@@ -185,16 +202,23 @@ export class UrpcStream extends TypedEmitter {
     }
 
     const onError = (error) => {
+      // Handler should not throw errors. It should provide it through response object.
+      // If error haas been thrown, then something went wrong.
       if (onResult) {
         this._decreaseCounter();
       }
 
+      this.push(
+        formatError(message.id, new EInternalError({}))
+      );
       this.emit('error', error);
       this.end();
     };
-    this.handler.call(this, {rpc: this, req, res})
+
+    this._handler.call(this, {connection: this, req, res})
     .then(onResult)
     .catch(onError);
+
     this.emit('request', req, res);
   }
 
@@ -209,7 +233,7 @@ export class UrpcStream extends TypedEmitter {
       return;
     }
 
-    const call = spliceBy(this.queue, (item) => (item.id === message.id));
+    const call = spliceBy(this._queue, (item) => (item.id === message.id));
 
     if (! call) {
       // Send error/Ignore ?
@@ -228,7 +252,7 @@ export class UrpcStream extends TypedEmitter {
       return;
     }
 
-    const call = spliceBy(this.queue, (item) => (item.id === message.id));
+    const call = spliceBy(this._queue, (item) => (item.id === message.id));
 
     if (! call) {
       // TODO Why to close without a error?
@@ -252,15 +276,15 @@ export class UrpcStream extends TypedEmitter {
       return;
     }
 
-    this.isEnding = true;
+    this._isEnding = true;
 
     const closed = new EClosed();
 
-    this.queue.forEach(({reject}) => {
+    this._queue.forEach(({reject}) => {
       reject(closed);
     });
 
-    if (this.incomingMessages > 0) {
+    if (this._messageCounter > 0) {
       return;
     }
 
@@ -279,7 +303,7 @@ export class UrpcStream extends TypedEmitter {
       };
 
       this.push(formatRequest(id, {method, params}));
-      this.queue.push({
+      this._queue.push({
         id,
         resolve: (result) => {
           removeTimer();
@@ -305,63 +329,18 @@ export class UrpcStream extends TypedEmitter {
   }
 
   setEnded() {
-    this.isEnding = false;
-    this.isEnded = true;
+    this._isEnding = false;
+    this._isEnded = true;
 
     this.emit('close');
   }
 
   setHandler(handler) {
-    this.handler = handler;
-  }
-}
-
-export class UrpcRequest {
-  constructor({id, method, params = [], jsonrpc}) {
-    this.id = id;
-    this.method = method;
-    this.params = params;
-    this.version = jsonrpc;
-  }
-}
-
-export class UrpcResponse {
-  constructor({id} = {}) {
-    this.id = id;
-
-    this._result = null;
-    this._error = null;
+    this._handler = handler;
   }
 
-  set result(result = null) {
-    this._result = result;
-    this._error = null;
-  }
-
-  get result() {
-    return this._result;
-  }
-
-  set error(error) {
-    this._result = null;
-    this._error = error;
-  }
-
-  get error() {
-    return this._error;
-  }
-
-  valueOf() {
-    if (this._error !== null) {
-      return formatError(this.id, this._error);
-    }
-    else {
-      return formatResponse(this.id, this._result);
-    }
-  }
-
-  toJSON() {
-    return this.valueOf();
+  setCodec(codec) {
+    this._codec = getCodec(codec);
   }
 }
 
@@ -376,3 +355,13 @@ function spliceBy(array, fn) {
   return value;
 }
 
+function getCodec(codec) {
+  switch (codec) {
+    case null:
+      return noCodec;
+    case 'json':
+      return jsonCodec;
+    default:
+      return codec;
+  }
+}

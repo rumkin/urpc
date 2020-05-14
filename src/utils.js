@@ -102,3 +102,28 @@ export function isErrorMessage(message) {
 
   return true;
 }
+
+export function formatRequest(id, {method, params = []}) {
+  return {
+    jsonrpc: '1.0',
+    id,
+    method,
+    params,
+  };
+}
+
+export function formatResponse(id, result = null) {
+  return {
+    jsonrpc: '1.0',
+    id,
+    result,
+  };
+}
+
+export function formatError(id, {code, message, data}) {
+  return {
+    jsonrpc: '1.0',
+    id,
+    error: {code, message, data},
+  };
+}

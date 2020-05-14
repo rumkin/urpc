@@ -92,7 +92,6 @@ export class EMethodNotFound extends UrpcProtocolError {
   constructor({method}) {
     super({
       code: ERR_CODES.METHOD_NOT_FOUND,
-      message: ERR_MESSAGES[ERR_CODES.METHOD_NOT_FOUND],
       data: {method},
     });
   }
@@ -100,13 +99,12 @@ export class EMethodNotFound extends UrpcProtocolError {
 
 export class EInternalError extends UrpcProtocolError {
   /**
-   * @param {Error} [error] origin Error
+   * @param {Object} data Internal error data
    */
-  constructor(error) {
+  constructor(data) {
     super({
       code: ERR_CODES.INTERNAL_ERROR,
-      message: error ? error.message : null,
-      data: {},
+      data,
     });
   }
 }

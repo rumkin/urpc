@@ -1,6 +1,6 @@
-const path = require('path')
-const fs = require('fs')
-const {spawnSync} = require('child_process')
+import path from 'path'
+import fs from 'fs'
+import {spawnSync} from 'child_process'
 
 function allNests(pathname) {
   const parts = pathname.split(path.sep)

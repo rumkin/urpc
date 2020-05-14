@@ -1,6 +1,6 @@
-# μRPC
+# μRPC v5.0
 
-Tiny transport agnostic bidirectional JSONRPC implementation for browser and
+Transport agnostic bidirectional JsonRPC 1.0 implementation for browser and
 node.js.
 
 ### Install
@@ -11,12 +11,30 @@ Install via npm:
 npm i urpc
 ```
 
+Import in browser:
+
+```html
+<!-- UMD -->
+<script src="https://unpkg.com/@urpc/build/urpc.umd.js"></script>
+```
+
+And then use in some script:
+```html
+<script>
+  const rpc = new Urpc.Connection()
+</script>
+```
+
+Single-file ESM and CommonJS versions are also distributing within a
+build.
+
 ### Usage
 
-Simple usage example.
+Hello world example. This is a simple endpoint which provide single
+method `greet(name)`, which returns a greeting message as a result.
 
 ```javascript
-import {UrpcStream} from 'urpc';
+import {Connection} from 'urpc';
 
 async function handler({req, res}) {
   if (req.method === 'greet') {
@@ -26,7 +44,7 @@ async function handler({req, res}) {
 
 // Create listening (server) connection with custom server
 wsServer.on('connection', (conn) => {
-  const rpc = new UrpcStream(handler);
+  const rpc = new Connection(handler);
 
   // Message exchange
   conn.on('message', (message) => {
@@ -47,6 +65,39 @@ wsServer.on('connection', (conn) => {
   });
 });
 ```
+
+## Codecs
+
+By default all messages passed in or out of a connection is encoded and decoded
+via built-in default codec (which is JSON). But you may use no codec:
+
+```js
+import {Connection} from 'urpc';
+
+const rpc = new Connection({
+  codec: null, // no codec
+});
+```
+
+Or define another codec:
+```js
+import {Connection} from 'urpc';
+import CBOR from 'cbor';
+
+const cborCodec = {
+  encode(v) {
+    return CBOR.encode(v)
+  },
+  decode(v) {
+    return CBOR.decode(v)
+  },
+};
+
+const rpc = new Connection({
+  codec: cborCodec,
+});
+```
+
 
 ## License
 

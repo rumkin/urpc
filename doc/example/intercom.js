@@ -1,4 +1,7 @@
-const uRpc = require('../');
+import {
+    Connection,
+    EInternalError,
+} from 'urpc'
 
 const handler = {
     get(target, name) {
@@ -18,7 +21,6 @@ function createApi(stream) {
 }
 
 function handleRequest(req, res, handlers) {
-    let methodExists = true;
     try {
         if (handlers.hasOwnProperty(req.method)) {
             return handlers[req.method](...req.params);
@@ -26,23 +28,25 @@ function handleRequest(req, res, handlers) {
         else if (handlers.hasOwnProperty('*')) {
             return handlers['*'](req.method, ...req.params);
         }
-        else {
-            methodExists = false;
-        }
     }
     catch (err) {
-        res.error = uRpc.Error.internalError(err);
-        return;
-    }
-
-    if (! methodExists) {
-        throw uRpc.Error.methodNotFound(req.method);
+        if ('toJSON' in err) {
+            res.error = new EInternalError({
+                ...err.toJSON(),
+            });
+        }
+        else {
+            res.error = new EInternalError({
+                message: err.message,
+                stack: err.stack,
+            })
+        }
     }
 }
 // ------
 
 async function run() {
-    const s1 = new uRpc.Stream(async function (req, res) {
+    const s1 = new Connection(async function ({req, res}) {
         const remote = createApi(this);
 
         res.result = await handleRequest(req, res, {
@@ -53,9 +57,9 @@ async function run() {
                 return a + 1;
             },
         });
-    });
+    }, {codec: null});
 
-    const s2 = new uRpc.Stream(async function (req, res) {
+    const s2 = new Connection(async function ({req, res}) {
         const remote = createApi(this);
 
         res.result = await handleRequest(req, res, {
@@ -69,7 +73,7 @@ async function run() {
                 return i;
             },
         });
-    });
+    }, {codec: null});
 
     s1.on('data', (data) => s2.write(data));
     s1.on('error', (error) => console.error('stream 1', error));

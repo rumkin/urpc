@@ -1,11 +1,13 @@
 {
   "name": "urpc",
-  "version": "5.0.0-a.1",
+  "version": "5.0.0",
   "main": "build/urpc.cjs.js",
   "browser": "build/urpc.umd.js",
+  "type": "module",
   "exports": {
-    "node": "src/index.js",
-    "browser": "build/urpc.esm.js"
+    "import": "./src/index.js",
+    "require": "./build/urpc.cjs.js",
+    "browser": "./build/urpc.esm.js"
   },
   "devDependencies": {
     "allow-publish-tag": "^2.1.1",

@@ -1,7 +1,10 @@
-.editorconfig
-.eslint
-.eslintignore
-
-dist/
+test/
 tmp/
-example/
+doc/
+workbench/
+
+.editorconfig
+.eslintrc
+.eslintignore
+rollup.config.js
+changelog.md

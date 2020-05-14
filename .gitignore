@@ -1,12 +1,11 @@
-node_modules/
 npm-debug.log
-coverage/
-*.pid
+.DS_Store
 
-**/.DS_Store
+/node_modules/
+/coverage/
+/build/
+/dist/
+/tmp/
+/local/
 
-tmp/
-local/
-dist/
-
-urpc.min.js
+/*.pid

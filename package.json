@@ -1,22 +1,27 @@
 {
   "name": "urpc",
-  "version": "5.0.0",
+  "version": "5.0.0-a.1",
+  "main": "build/urpc.cjs.js",
+  "browser": "build/urpc.umd.js",
+  "exports": {
+    "node": "src/index.js",
+    "browser": "build/urpc.esm.js"
+  },
   "devDependencies": {
+    "allow-publish-tag": "^2.1.1",
     "mocha": "^7.1.2",
     "should": "^13.2.3"
   },
   "scripts": {
     "clean": "rm -rf build",
-    "compile": "",
+    "compile": "node workbench/bin/exe.js rollup -c rollup.config.js",
+    "can-publish": "npm run check-tag && npm run test",
+    "check-tag": "allow-publish-tag next",
     "build": "npm run clean && npm run compile",
-    "prepublishOnly": "npm run build && npm run test",
+    "prepublishOnly": "npm run can-publish && npm run build",
     "test": "mocha test/test.spec.js"
   },
   "description": "μRPC (microRPC) is JSONRPC implementation with Node's Stream interface for Browser and Server",
-  "directories": {
-    "example": "example",
-    "test": "test"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rumkin/urpc.git"

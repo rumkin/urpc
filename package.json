@@ -1,6 +1,6 @@
 {
   "name": "urpc",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "main": "build/urpc.cjs.js",
   "browser": "build/urpc.umd.js",
   "type": "module",

@@ -1,5 +1,42 @@
 # CHANGELOG
 
+### v5.1.0
+
+#### Changes
+
+* Added missing `Connection#close()` method.
+* Added `EUnknownMessageId` error.
+* Implement smooth closing.
+
+### v5.0.0
+
+#### Breaking changes
+
+* Migrated to ES modules.
+* Rename Stream into Connection.
+* Modify Connection constructor params.
+* Request handler interface is modified.
+  was:
+  ```js
+  async function (req, res) {}
+  ```
+  become:
+  ```js
+  async function ({req, res, connection}) {}
+  ```
+* Hide `Connection` private methods and properties with underscore.
+* Error system has been reworked:
+  * Added `UrpcError` and `UrpcProtocolError`.
+  * Implement protocol dependent errors as classes (instead of functions).
+    Each error is ancestor of `UrpcProtocolError`.
+  * Add lifetime errors like `EClosed` or `ETimeout` to notify about
+    errors not described by the standard.
+
+#### Fixes
+
+* Fix `Connection#setHandler()`.
+* Fix `TypedEventEmitter` constructor.
+
 ### v4.1.0
 
 * Add `request` event.

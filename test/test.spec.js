@@ -4,6 +4,7 @@ import should from 'should'
 import {
   Connection,
   EMethodNotFound,
+  EClosed,
   ERR_CODES,
   ERR_MESSAGES,
 } from '../src/index.js'
@@ -116,5 +117,99 @@ describe('μRPC', function() {
         method: 'test',
       });
     });
-  })
+
+    describe('#end()', function() {
+      it('Should wait all incoming requests', async function () {
+        const a = new Connection({codec: null});
+        const b = new Connection(async ({req, res}) => {
+          // Delay test execution to let b.end triggered before the response is sent
+          await timeout(10);
+          res.result = req.params[0];
+        }, {codec: null});
+
+        a.on('message', (msg) => setTimeout(() => b.write(msg),))
+        b.on('message', (msg) => setTimeout(() => a.write(msg)))
+
+        const result = await new Promise((resolve, reject) => {
+          Promise.all([
+            a.call('test', [1]),
+            a.call('test', [2]),
+          ])
+          .then(resolve, reject)
+
+          timeout()
+          .then(() => {
+            b.end();
+          })
+          .catch(reject);
+        });
+
+        should(result).be.deepEqual([
+          1, 2
+        ]);
+      });
+
+      it('Should wait all outgoing requests', async function () {
+        const a = new Connection({codec: null});
+        const b = new Connection(async ({req, res}) => {
+          await timeout(10);
+          res.result = req.params[0];
+        }, {codec: null});
+
+        a.on('message', (msg) => setTimeout(() => b.write(msg)))
+        b.on('message', (msg) => setTimeout(() => a.write(msg)))
+
+        const result = await new Promise((resolve, reject) => {
+          Promise.all([
+            a.call('test', [1]),
+            a.call('test', [2]),
+          ])
+          .then(resolve, reject);
+
+          a.end();
+        });
+
+        should(result).be.deepEqual([
+          1, 2
+        ]);
+      });
+    });
+
+    describe('#close()', function() {
+      it('Should reject pending calls with EClosed error', async () => {
+        const a = new Connection({codec: null});
+        const b = new Connection(async ({req, res}) => {
+          await timeout(10);
+          res.result = req.params[0];
+        }, {codec: null});
+
+        a.on('message', (msg) => setTimeout(() => b.write(msg)));
+        b.on('message', (msg) => setTimeout(() => {
+          if (! a.isClosed) {
+            a.write(msg);
+          }
+        }));
+
+        const result = await new Promise((resolve, reject) => {
+          a.call('test', [1])
+          .then(() => {
+            reject(new Error('Result'))
+          })
+          .catch(resolve);
+
+          timeout()
+          .then(() => {
+            a.close();
+          })
+          .catch(reject);
+        });
+
+        should(result).be.instanceof(EClosed);
+      });
+    })
+  });
 });
+
+function timeout(delay, ...args) {
+  return new Promise((resolve) => setTimeout(resolve, delay, ...args))
+}

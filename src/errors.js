@@ -33,44 +33,51 @@ export class UrpcProtocolError extends UrpcError {
   toJSON() {
     return {
       ...this,
-    }
+    };
   }
 }
 
 export function protocolErrorFrom({code, data}) {
   switch (code) {
     case ERR_CODES.METHOD_NOT_FOUND:
-      return new EMethodNotFound(data)
+      return new EMethodNotFound(data);
     case ERR_CODES.INTERNAL_ERROR:
-      return new EInternalError(data)
+      return new EInternalError(data);
     case ERR_CODES.EInvalidParams:
-      return new EInvalidParams(data)
+      return new EInvalidParams(data);
     case ERR_CODES.INVALID_REQUEST:
-      return new EInvalidRequest(data)
+      return new EInvalidRequest(data);
     case ERR_CODES.PARSE_ERROR:
-      return new EParseError(data)
+      return new EParseError(data);
     default:
-      throw new EUnknownErrorCode({code})
+      throw new EUnknownErrorCode({code});
   }
 }
 
 export class EUnknownErrorCode extends UrpcError {
   constructor({code}) {
-    super(`Unknown error code: "${code}"`)
+    super(`Unknown error code: "${code}"`);
 
-    this.data = {code}
+    this.data = {code};
   }
 }
 
 export class EClosed extends UrpcError {
   constructor() {
-    super('closed')
+    super('Closed');
   }
 }
 
 export class ETimeout extends UrpcError {
   constructor() {
-    super('Timeout')
+    super('Timeout');
+  }
+}
+
+export class EUnkownMessageId extends UrpcError {
+  constructor({id}) {
+    super(`Unknown message ID: ${id}`);
+    this.data = {id};
   }
 }
 

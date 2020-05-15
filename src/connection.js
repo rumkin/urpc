@@ -7,6 +7,7 @@ import {
   protocolErrorFrom,
   EMethodNotFound,
   EInternalError,
+  EUnkownMessageId,
 } from './errors.js'
 import {
   isMessage,
@@ -114,7 +115,7 @@ export class UrpcConnection extends TypedEmitter {
     this._messageCounter -= 1;
   }
 
-  push(data) {
+  _push(data) {
     const encoded = this._codec.encode(data);
 
     // Node.js Stream interface event
@@ -124,7 +125,7 @@ export class UrpcConnection extends TypedEmitter {
 
     if (this._isEnding && this._messageCounter === 0) {
       this.emit('finish');
-      this.setEnded();
+      this._closeOnDone();
     }
   }
 
@@ -133,19 +134,24 @@ export class UrpcConnection extends TypedEmitter {
       this.end();
       return;
     }
+    else if (this._isEnded) {
+      throw new EClosed();
+    }
 
     let message
     try {
       message = this._codec.decode(rawMessage);
     }
     catch (err) {
-      this.push(formatError(undefined, new EParseError()));
+      this._push(
+        formatError(undefined, new EParseError())
+      );
       this.end();
       return;
     }
 
     if (isMessage(message) === false) {
-      this.push(
+      this._push(
         formatError(undefined, new EInvalidRequest(message))
       );
       this.end();
@@ -157,17 +163,17 @@ export class UrpcConnection extends TypedEmitter {
       return
     }
     else if ('result' in message) {
-      this.handleResponse(message);
+      this._handleResponse(message);
       return
     }
     else if ('error' in message) {
-      this.handleError(message);
+      this._handleError(message);
       return
     }
 
     const error = new EInvalidRequest(message);
 
-    this.push(
+    this._push(
       formatError(message.id, error)
     );
     this.emit('error', error);
@@ -178,9 +184,23 @@ export class UrpcConnection extends TypedEmitter {
     if (isRequestMessage(message) !== true) {
       const error = new EInvalidRequest(message);
 
-      this.push(formatError(message.id, error));
+      this._push(
+        formatError(message.id, error)
+      );
       this.emit('error', error);
       this.end();
+      return;
+    }
+    else if (this._isEnding && message.id) {
+      this._push(
+        formatError(message.id, {
+          code: 'urpc/refused',
+          message: 'Request refused',
+          data: {
+            reason: 'closed',
+          },
+        })
+      )
       return;
     }
 
@@ -197,7 +217,7 @@ export class UrpcConnection extends TypedEmitter {
       this._increaseCounter();
       onResult = () => {
         this._decreaseCounter();
-        this.push(res.toJSON());
+        this._push(res.toJSON());
       };
     }
 
@@ -208,25 +228,30 @@ export class UrpcConnection extends TypedEmitter {
         this._decreaseCounter();
       }
 
-      this.push(
+      this._push(
         formatError(message.id, new EInternalError({}))
       );
       this.emit('error', error);
-      this.end();
+      this.close();
     };
 
     this._handler.call(this, {connection: this, req, res})
-    .then(onResult)
-    .catch(onError);
+    .then(onResult, onError)
+    .catch(error => {
+      this.emit('error', error);
+      this.close();
+    });
 
     this.emit('request', req, res);
   }
 
-  handleResponse(message) {
+  _handleResponse(message) {
     if (isErrorMessage(message)) {
       const error = new EInvalidRequest(message);
 
-      this.push(formatError(message.id, error));
+      this._push(
+        formatError(message.id, error)
+      );
       this.emit('error', error);
       this.end();
 
@@ -236,15 +261,21 @@ export class UrpcConnection extends TypedEmitter {
     const call = spliceBy(this._queue, (item) => (item.id === message.id));
 
     if (! call) {
-      // Send error/Ignore ?
+      this.emit('error', new EUnkownMessageId({
+        id: message.id,
+      }));
       this.end();
       return;
     }
 
     call.resolve(message.result);
+
+    if (this._isEnding) {
+      this._closeOnDone();
+    }
   }
 
-  handleError(message) {
+  _handleError(message) {
     if (! isErrorMessage(message)) {
       this.emit('error', new EInvalidRequest(message));
       this.end();
@@ -255,7 +286,9 @@ export class UrpcConnection extends TypedEmitter {
     const call = spliceBy(this._queue, (item) => (item.id === message.id));
 
     if (! call) {
-      // TODO Why to close without a error?
+      this.emit('error', new EUnkownMessageId({
+        id: message.id,
+      }));
       this.end();
       return;
     }
@@ -268,6 +301,11 @@ export class UrpcConnection extends TypedEmitter {
       call.reject(err)
       this.emit('error', err)
       this.end();
+      return;
+    }
+
+    if (this._isEnding) {
+      this._closeOnDone();
     }
   }
 
@@ -276,19 +314,44 @@ export class UrpcConnection extends TypedEmitter {
       return;
     }
 
-    this._isEnding = true;
+    if (this._messageCounter > 0 || this._queue.length > 0) {
+      this._isEnding = true;
+    }
+    else {
+      this.close()
+    }
+  }
 
+  close() {
     const closed = new EClosed();
 
     this._queue.forEach(({reject}) => {
       reject(closed);
     });
 
-    if (this._messageCounter > 0) {
-      return;
+    const rejectedCalls = this._queue.length;
+    const rejectedRequests = this._messageCounter;
+
+    this._queue.length = 0;
+    this._messageCounter = 0;
+
+    this._isEnding = false;
+    this._isEnded = true;
+
+    this.emit('close', {
+      rejectedCalls,
+      rejectedRequests,
+    });
+
+    this.removeAllListeners();
+  }
+
+  _closeOnDone() {
+    if (this._messageCounter > 0 || this._queue.length > 0) {
+      return
     }
 
-    this.setEnded();
+    this.close();
   }
 
   call(method, params, {timeout = 0} = {}) {
@@ -302,7 +365,9 @@ export class UrpcConnection extends TypedEmitter {
         }
       };
 
-      this.push(formatRequest(id, {method, params}));
+      this._push(
+        formatRequest(id, {method, params})
+      );
       this._queue.push({
         id,
         resolve: (result) => {
@@ -325,14 +390,9 @@ export class UrpcConnection extends TypedEmitter {
   }
 
   publish(method, params) {
-    this.push(formatRequest(undefined, {method, params}));
-  }
-
-  setEnded() {
-    this._isEnding = false;
-    this._isEnded = true;
-
-    this.emit('close');
+    this._push(
+      formatRequest(undefined, {method, params})
+    );
   }
 
   setHandler(handler) {

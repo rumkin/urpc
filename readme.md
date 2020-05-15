@@ -1,4 +1,4 @@
-# μRPC v5.0
+# μRPC v5
 
 Transport agnostic bidirectional JsonRPC 1.0 implementation for browser and
 node.js.
@@ -25,7 +25,7 @@ And then use in some script:
 </script>
 ```
 
-Single-file ESM and CommonJS versions are also distributing within a
+Single-file ESM and CommonJS versions are also distributed with a
 build.
 
 ### Usage
@@ -63,6 +63,15 @@ wsServer.on('connection', (conn) => {
   rpc.on('close', () => {
     conn.close();
   });
+
+  // Call remote end with the same handler
+  rpc.call('greet', ['World'])
+  .then((result) => {
+    result; // "Hello, World!"
+  });
+
+  // Send notification
+  rpc.publish('event', []);
 });
 ```
 

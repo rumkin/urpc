@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## v5.3.0
+## v5.2.0
 
 ### Changes
 
@@ -13,17 +13,6 @@
 
 * Fix `finish` event invocation to be triggered once.
 * Fix incoming notifications handling in ending state.
-
-## v5.2.0
-
-### Changes
-
-* Make `params` param optional for `Connection#call()` and  `Connection#publish()`.
-* Add `Client` and `Server` classes as connection which represents particular type
-  of connection peer.
-
-### Fixes
-
 * Fix `EInvalidRequests` error code.
 
 ## v5.1.0

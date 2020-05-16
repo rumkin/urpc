@@ -21,7 +21,7 @@
     "check-tag": "allow-publish-tag next",
     "build": "npm run clean && npm run compile",
     "prepublishOnly": "npm run can-publish && npm run build",
-    "test": "mocha test/test.spec.js"
+    "test": "mocha test/index.js"
   },
   "description": "μRPC (microRPC) is JSONRPC implementation with Node's Stream interface for Browser and Server",
   "repository": {

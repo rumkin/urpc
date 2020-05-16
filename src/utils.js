@@ -47,10 +47,7 @@ export function isMessage(message) {
     return false;
   }
 
-  if ('jsonrpc' in message === false) {
-    return false;
-  }
-  else if (! ['1.0'].includes(message.jsonrpc)) {
+  if (message.jsonrpc !== "1.0") {
     return false;
   }
 
@@ -81,7 +78,7 @@ export function isErrorMessage(message) {
     }
   }
 
-  if (! isObject(message.error) || message.error.constructor !== Object) {
+  if (! (isObject(message.error) && isObjectInstance(message.error))) {
     return false;
   }
 
@@ -95,7 +92,7 @@ export function isErrorMessage(message) {
     return false;
   }
   else if ('data' in error) {
-    if (! isObject(error.data) || error.data.constructor !== Object) {
+    if (! (isObject(error.data) && isObjectInstance(error.data))) {
       return false;
     }
   }

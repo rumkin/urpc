@@ -1,9 +1,20 @@
-export class TypedEmitter {
-  constructor(events) {
-    this.listeners = events.reduce((result, name) => {
-      result[name] = [];
-      return result;
-    }, {});
+export class StrictEmitter {
+  constructor() {
+    this.listeners = {};
+  }
+
+  registerEvent(name) {
+    this.listeners[name] = this.listeners[name] || [];
+  }
+
+  registerEvents(names) {
+    for (const name of names) {
+      this.registerEvent(name);
+    }
+  }
+
+  getEventNames() {
+    return Object.keys(this.listeners);
   }
 
   on(event, listener) {

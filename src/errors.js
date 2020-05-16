@@ -85,7 +85,6 @@ export class EParseError extends UrpcProtocolError {
   constructor() {
     super({
       code: ERR_CODES.PARSE_ERROR,
-      message: ERR_MESSAGES[ERR_CODES.PARSE_ERROR],
       data: {},
     });
   }
@@ -133,9 +132,9 @@ export class EInvalidRequest extends UrpcProtocolError {
   /**
    * @param {*} message Invalid message
    */
-  constructor(message) {
+  constructor({message}) {
     super({
-      code: ERR_CODES.INTERNAL_ERROR,
+      code: ERR_CODES.INVALID_REQUEST,
       data: {message},
     });
   }

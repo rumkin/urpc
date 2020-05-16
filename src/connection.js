@@ -1,4 +1,4 @@
-import {TypedEmitter} from './typed-emitter.js'
+import {StrictEmitter} from './strict-emitter.js'
 import {
   EInvalidRequest,
   EParseError,
@@ -32,6 +32,8 @@ const jsonCodec = {
   decode: (v) => JSON.parse(v),
 }
 
+function noop() {}
+
 async function asyncNoop() {}
 
 /**
@@ -54,26 +56,29 @@ async function asyncNoop() {}
  * @param {UrpcHandler} handler Urpc stream handler function
  * @param {string|Null|UrpcCodec} [codec="json"] codec instance or codec id.
  */
-export class UrpcConnection extends TypedEmitter {
+export class UrpcConnection extends StrictEmitter {
   /**
    *
    * @param {UrpcHandler} [handler] Handler function
    * @param {UrpcConnectionOptions} options  UrpcConnection options object
    */
   constructor(
-    handler, options = {},
+    handler,
+    options = {},
   ) {
-    super([
+    super();
+
+    this.registerEvents([
+      'close',
       'data',
-      'message',
       'end',
       'error',
       'finish',
-      'close',
+      'message',
       'request',
     ]);
 
-    this.id = 0;
+    this._id = 0;
     this._queue = [];
     this._messageCounter = 0;
 
@@ -123,13 +128,13 @@ export class UrpcConnection extends TypedEmitter {
     // Connection interface event
     this.emit('message', encoded);
 
-    if (this._isEnding && this._messageCounter === 0) {
-      this.emit('finish');
+    if (this._isEnding) {
       this._closeOnDone();
     }
   }
 
   write(rawMessage) {
+    // TODO Remove this. Use end() instead.
     if (rawMessage === null) {
       this.end();
       return;
@@ -143,67 +148,70 @@ export class UrpcConnection extends TypedEmitter {
       message = this._codec.decode(rawMessage);
     }
     catch (err) {
-      this._push(
-        formatError(undefined, new EParseError())
-      );
-      this.end();
+      this._onParseError(rawMessage);
       return;
     }
 
-    if (isMessage(message) === false) {
-      this._push(
-        formatError(undefined, new EInvalidRequest(message))
-      );
-      this.end();
-      return;
+    this._onMessage(message);
+  }
+
+  _onMessage(message) {
+    if (isMessage(message)) {
+      if ('method' in message) {
+        this._onRequestMessage(message);
+        return;
+      }
+      else if ('result' in message) {
+        this._onResponseMessage(message);
+        return;
+      }
+      else if ('error' in message) {
+        this._onErrorMessage(message);
+        return;
+      }
     }
 
-    if ('method' in message) {
-      this.handleRequest(message);
-      return
-    }
-    else if ('result' in message) {
-      this._handleResponse(message);
-      return
-    }
-    else if ('error' in message) {
-      this._handleError(message);
-      return
-    }
+    this._onInvalidRequest(message);
+  }
 
-    const error = new EInvalidRequest(message);
-
+  _onInvalidRequest(message) {
     this._push(
-      formatError(message.id, error)
+      formatError(message.id, new EInvalidRequest({message}))
     );
-    this.emit('error', error);
     this.end();
   }
 
-  handleRequest(message) {
+  _onParseError(_) {
+    this._push(
+      formatError(undefined, new EParseError())
+    );
+    this.end();
+  }
+
+  _onRequestMessage(message) {
     if (isRequestMessage(message) !== true) {
-      const error = new EInvalidRequest(message);
-
-      this._push(
-        formatError(message.id, error)
-      );
-      this.emit('error', error);
-      this.end();
+      this._onInvalidRequest(message);
       return;
     }
-    else if (this._isEnding && message.id) {
-      this._push(
-        formatError(message.id, {
-          code: 'urpc/refused',
-          message: 'Request refused',
-          data: {
-            reason: 'closed',
-          },
-        })
-      )
+    else if (this._isEnding) {
+      if (message.id) {
+        this._push(
+          formatError(message.id, {
+            code: 'urpc/refused',
+            message: 'Request refused',
+            data: {
+              reason: 'closed',
+            },
+          })
+        );
+      }
       return;
     }
 
+    this._handleRequest(message);
+  }
+
+  _handleRequest(message) {
     const req = new UrpcRequest(message);
     const res = new UrpcResponse(message);
 
@@ -212,7 +220,7 @@ export class UrpcConnection extends TypedEmitter {
       method: req.method,
     })
 
-    let onResult = null;
+    let onResult = noop;
     if (message.id) {
       this._increaseCounter();
       onResult = () => {
@@ -221,53 +229,40 @@ export class UrpcConnection extends TypedEmitter {
       };
     }
 
-    const onError = (error) => {
-      // Handler should not throw errors. It should provide it through response object.
-      // If error haas been thrown, then something went wrong.
-      if (onResult) {
-        this._decreaseCounter();
-      }
-
-      this._push(
-        formatError(message.id, new EInternalError({}))
-      );
-      this.emit('error', error);
-      this.close();
-    };
-
     this._handler.call(this, {connection: this, req, res})
-    .then(onResult, onError)
+    .then(onResult)
     .catch(error => {
-      this.emit('error', error);
-      this.close();
+      this._onRequestError(message, error)
     });
 
     this.emit('request', req, res);
   }
 
-  _handleResponse(message) {
+  _onRequestError(message, error) {
+    this._push(
+      formatError(message.id, new EInternalError({}))
+    );
+    this.emit('error', error);
+    this.close();
+  }
+
+  _onResponseMessage(message) {
     if (isErrorMessage(message)) {
-      const error = new EInvalidRequest(message);
-
-      this._push(
-        formatError(message.id, error)
-      );
-      this.emit('error', error);
-      this.end();
-
+      this._onInvalidRequest(message);
       return;
     }
 
-    const call = spliceBy(this._queue, (item) => (item.id === message.id));
+    const call = this._popCall(message.id);
 
     if (! call) {
-      this.emit('error', new EUnkownMessageId({
-        id: message.id,
-      }));
-      this.end();
+      this._onMissedId(message.id);
       return;
     }
 
+    this._handleResponse(message, call);
+  }
+
+  _handleResponse(message, call) {
     call.resolve(message.result);
 
     if (this._isEnding) {
@@ -275,31 +270,30 @@ export class UrpcConnection extends TypedEmitter {
     }
   }
 
-  _handleError(message) {
+  _onErrorMessage(message) {
     if (! isErrorMessage(message)) {
-      this.emit('error', new EInvalidRequest(message));
-      this.end();
-
+      this._onInvalidRequest(message);
       return;
     }
 
-    const call = spliceBy(this._queue, (item) => (item.id === message.id));
+    const call = this._popCall(message.id);
 
     if (! call) {
-      this.emit('error', new EUnkownMessageId({
-        id: message.id,
-      }));
-      this.end();
+      this._onMissedId(message.id);
       return;
     }
 
+    this._handleError(message, call);
+  }
+
+  _handleError(message, call) {
     try {
-      const error = protocolErrorFrom(message.error)
-      call.reject(error)
+      const error = protocolErrorFrom(message.error);
+      call.reject(error);
     }
     catch (err) {
-      call.reject(err)
-      this.emit('error', err)
+      call.reject(err);
+      this.emit('error', err);
       this.end();
       return;
     }
@@ -309,20 +303,42 @@ export class UrpcConnection extends TypedEmitter {
     }
   }
 
+  _onMissedId(id) {
+    this.emit('error', new EUnkownMessageId({
+      id,
+    }));
+    this.end();
+  }
+
+  _popCall(id) {
+    return spliceBy(this._queue, (item) => (item.id === id));
+  }
+
   end() {
     if (this.isClosed) {
       return;
     }
 
-    if (this._messageCounter > 0 || this._queue.length > 0) {
-      this._isEnding = true;
-    }
-    else {
-      this.close()
-    }
+    this._isEnding = true;
+    this.emit('end');
+    this._closeOnDone();
   }
 
   close() {
+    const stat = this._onClose();
+
+    this._isEnding = false;
+    this._isEnded = true;
+
+    // TODO Check if this event is needed.
+    // Emit only when all incoming job has been done.
+    this.emit('finish');
+    this.emit('close', stat);
+
+    this.removeAllListeners();
+  }
+
+  _onClose() {
     const closed = new EClosed();
 
     this._queue.forEach(({reject}) => {
@@ -335,39 +351,31 @@ export class UrpcConnection extends TypedEmitter {
     this._queue.length = 0;
     this._messageCounter = 0;
 
-    this._isEnding = false;
-    this._isEnded = true;
-
-    this.emit('close', {
+    return {
       rejectedCalls,
       rejectedRequests,
-    });
+    };
+  }
 
-    this.removeAllListeners();
+  get _canClose() {
+    return this._messageCounter === 0 && this._queue.length === 0;
   }
 
   _closeOnDone() {
-    if (this._messageCounter > 0 || this._queue.length > 0) {
-      return
+    if (this._canClose) {
+      this.close();
     }
-
-    this.close();
   }
 
-  call(method, params, {timeout = 0} = {}) {
+  call(method, params = [], {timeout = 0} = {}) {
     return new Promise((resolve, reject) => {
-      const id = ++this.id;
-      let timer;
-
-      const removeTimer = () => {
-        if (timer) {
-          clearTimeout(timer);
-        }
-      };
+      const id = ++this._id;
+      let removeTimer = noop;
 
       this._push(
         formatRequest(id, {method, params})
       );
+
       this._queue.push({
         id,
         resolve: (result) => {
@@ -381,15 +389,18 @@ export class UrpcConnection extends TypedEmitter {
       });
 
       if (timeout > 0) {
-        timer = setTimeout(() => {
+        const timer = setTimeout(() => {
           removeTimer();
           reject(new ETimeout());
         }, timeout);
+        removeTimer = () => {
+          clearTimeout(timer);
+        }
       }
     });
   }
 
-  publish(method, params) {
+  publish(method, params = []) {
     this._push(
       formatRequest(undefined, {method, params})
     );

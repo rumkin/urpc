@@ -11,7 +11,7 @@
   },
   "devDependencies": {
     "allow-publish-tag": "^2.1.1",
-    "mocha": "^7.1.2",
+    "mocha": "^10.2.0",
     "should": "^13.2.3"
   },
   "scripts": {
